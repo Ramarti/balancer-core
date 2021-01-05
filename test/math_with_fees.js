@@ -1,3 +1,4 @@
+const { assert } = require('chai')
 const Decimal = require('decimal.js');
 const {
     calcSpotPrice,
@@ -12,14 +13,15 @@ const TToken = artifacts.require('TToken');
 const errorDelta = 10 ** -8;
 const swapFee = 10 ** -3; // 0.001;
 const exitFee = 0;
-const verbose = process.env.VERBOSE;
+const verbose = true;
 
-contract('BPool', async (accounts) => {
+contract.only('BPool', async (accounts) => {
     const { toWei } = web3.utils;
     const { fromWei } = web3.utils;
     const admin = accounts[0];
 
     const MAX = web3.utils.toTwosComplement(-1);
+    const BN = web3.utils.BN
 
     let WETH; let DAI; // addresses
     let weth; let dai; // TTokens
@@ -34,7 +36,7 @@ contract('BPool', async (accounts) => {
     let previousWethBalance = currentWethBalance;
 
     const daiBalance = '12';
-    const daiDenorm = '10';
+    const daiDenorm = '11';
 
     let currentDaiBalance = Decimal(daiBalance);
     let previousDaiBalance = currentDaiBalance;
@@ -45,6 +47,30 @@ contract('BPool', async (accounts) => {
     const sumWeights = Decimal(wethDenorm).add(Decimal(daiDenorm));
     const wethNorm = Decimal(wethDenorm).div(Decimal(sumWeights));
     const daiNorm = Decimal(daiDenorm).div(Decimal(sumWeights));
+
+    async function logData() {
+      console.log('--------')
+      console.log('Curr pool bal: ', web3.utils.fromWei(await pool.totalSupply()))
+      const isWETHBound = await pool.isBound(WETH)
+      if (isWETHBound) {
+        console.log('WETH bal: ', web3.utils.fromWei(await pool.getBalance(WETH)))
+        console.log('WETH weight: ', web3.utils.fromWei(await pool.getDenormalizedWeight(WETH)))
+
+      }
+      const isDAIBound = await pool.isBound(DAI)
+      if (isDAIBound) {
+        console.log('DAI bal: ', web3.utils.fromWei(await pool.getBalance(DAI)))
+        console.log('DAI weight: ', web3.utils.fromWei(await pool.getDenormalizedWeight(DAI)))
+      }
+      
+      console.log('Fee: ', web3.utils.fromWei(await pool.getSwapFee()))
+      if (isDAIBound && isWETHBound) {
+        console.log('DAI-WETH Spot price', web3.utils.fromWei(await pool.getSpotPrice(DAI, WETH)))
+        console.log('ETH-DAI Spot price', web3.utils.fromWei(await pool.getSpotPrice(WETH, DAI)))
+
+      }
+
+    }
 
     async function logAndAssertCurrentBalances() {
         let expected = currentPoolBalance;
@@ -114,20 +140,45 @@ contract('BPool', async (accounts) => {
     });
 
     describe('With fees', () => {
-        it('swapExactAmountIn', async () => {
+
+        it.only('Unbind', async () => {
+
+          await logData()
+          await pool.unbind(WETH)
+          await logData()
+          const totWeight = await pool.getTotalDenormalizedWeight()
+          console.log('totDenorm', web3.utils.fromWei(totWeight))
+          
+        })
+
+        it.skip('swapExactAmountIn', async () => {
             const tokenIn = WETH;
             const tokenAmountIn = '2';
             const tokenOut = DAI;
             const minAmountOut = '0';
             const maxPrice = MAX;
-
-            const output = await pool.swapExactAmountIn.call(
+            const priceBefore = await pool.calcSpotPrice(toWei(wethBalance), toWei(wethDenorm), toWei(daiBalance), toWei(daiDenorm),toWei(String(swapFee)))
+            console.log(fromWei(priceBefore))
+            console.log(toWei(wethBalance), toWei(wethDenorm))
+            console.log(toWei(daiBalance), toWei(daiDenorm))
+            console.log(toWei(tokenAmountIn))
+            const to = await pool.calcOutGivenIn(
+              toWei(wethBalance), toWei(wethDenorm),
+              toWei(daiBalance), toWei(daiDenorm),
+              toWei(tokenAmountIn),
+              toWei(String(swapFee))
+          );
+          console.log('token out',fromWei(to))
+          const output = await pool.swapExactAmountIn.call(
                 tokenIn,
                 toWei(tokenAmountIn),
                 tokenOut,
                 toWei(minAmountOut),
                 maxPrice,
             );
+            console.log(web3.utils.fromWei(output.tokenAmountOut))
+            console.log(web3.utils.fromWei(output.spotPriceAfter))
+            console.error('fu')
 
             // Checking outputs
             let expected = calcOutGivenIn(
@@ -174,7 +225,7 @@ contract('BPool', async (accounts) => {
         });
 
 
-        it('swapExactAmountOut', async () => {
+        it.skip('swapExactAmountOut', async () => {
             const tokenIn = DAI;
             const maxAmountIn = MAX;
             const tokenOut = WETH;
@@ -188,6 +239,16 @@ contract('BPool', async (accounts) => {
                 toWei(tokenAmountOut),
                 maxPrice,
             );
+            const totalDenorm = await pool.getTotalDenormalizedWeight()
+            console.log(fromWei(totalDenorm))
+            const daiWeight = await pool.getDenormalizedWeight(dai.address)
+            console.log(fromWei(daiWeight))
+            const ethixWeight = await pool.getDenormalizedWeight(weth.address)
+            console.log(fromWei(ethixWeight))
+            const daibalance = await pool.getBalance(dai.address)
+            console.log(fromWei(daibalance))
+            const wethBalance = await pool.getBalance(weth.address)
+            console.log(fromWei(wethBalance))
 
             // Checking outputs
             // let expected = (48 / (4 - 1) - 12) / (1 - swapFee);
@@ -201,13 +262,14 @@ contract('BPool', async (accounts) => {
             );
 
             let actual = fromWei(output[0]);
-            let relDif = calcRelativeDiff(expected, actual);
+            console.log('price', fromWei(output[1]))
+            //let relDif = calcRelativeDiff(expected, actual);
 
-            if (verbose) {
+            if (true) {
                 console.log('output[0]');
                 console.log(`expected: ${expected})`);
                 console.log(`actual  : ${actual})`);
-                console.log(`relDif  : ${relDif})`);
+              //  console.log(`relDif  : ${relDif})`);
             }
 
             assert.isAtMost(relDif.toNumber(), errorDelta);
@@ -233,8 +295,7 @@ contract('BPool', async (accounts) => {
             assert.isAtMost(relDif.toNumber(), errorDelta);
         });
 
-        it('joinPool', async () => {
-            currentPoolBalance = '100';
+        it.skip('joinPool', async () => {
             await pool.finalize();
 
             // Call function
@@ -256,7 +317,7 @@ contract('BPool', async (accounts) => {
             await logAndAssertCurrentBalances();
         });
 
-        it('exitPool', async () => {
+        it.skip('exitPool', async () => {
             // Call function
             // so that the balances of all tokens will go back exactly to what they were before joinPool()
             const pAi = 1 / (1 - exitFee);
@@ -278,9 +339,10 @@ contract('BPool', async (accounts) => {
             // Print current balances after operation
             await logAndAssertCurrentBalances();
         });
+        
 
 
-        it('joinswapExternAmountIn', async () => {
+        it.skip('joinswapExternAmountIn', async () => {
             // Call function
             const poolRatio = 1.1;
             // increase tbalance by 1.1^2 after swap fee
@@ -312,16 +374,30 @@ contract('BPool', async (accounts) => {
             // Print current balances after operation
             await logAndAssertCurrentBalances();
         });
+        
 
-
-        it('joinswapPoolAmountOut', async () => {
+        it.skip('joinswapPoolAmountOut', async () => {
             // Call function
-            const poolRatio = 1.1;
-            const pAo = currentPoolBalance * (poolRatio - 1);
+            await pool.finalize();
 
-            const tAi = await pool.joinswapPoolAmountOut.call(DAI, toWei(String(pAo)), MAX); // 10% of current supply
-            await pool.joinswapPoolAmountOut(DAI, toWei(String(pAo)), MAX);
+            const currBal = await pool.totalSupply()
+            const newPoolSupply = new BN(currBal).add(new BN(toWei('2')))
+            const poolRatio = newPoolSupply.div(new BN(currBal))
+            console.log(fromWei(poolRatio))
+            //uint newPoolSupply = badd(poolSupply, poolAmountOut);
+            //uint poolRatio = bdiv(newPoolSupply, poolSupply);
+            const pAo = toWei('2.2')//currBal.mul(poolRatio.sub(new BN(toWei('1'))))
+            console.log(fromWei(pAo))
+            await logData()
 
+            const tAi = await pool.joinswapPoolAmountOut.call(DAI, pAo, MAX); // 10% of current supply
+            console.log('TAI',fromWei(tAi))
+
+            await pool.joinswapPoolAmountOut(DAI, pAo, MAX);
+            await logData()
+
+            
+/*
             // Update balance states
             previousPoolBalance = currentPoolBalance;
             currentPoolBalance = currentPoolBalance.mul(Decimal(poolRatio)); // increase by 1.1
@@ -345,81 +421,47 @@ contract('BPool', async (accounts) => {
             assert.isAtMost(relDif.toNumber(), errorDelta);
 
             // Print current balances after operation
-            await logAndAssertCurrentBalances();
-        });
+            await logAndAssertCurrentBalances();*/
+        })
 
 
-        it('exitswapPoolAmountIn', async () => {
+        it.skip('exitswapPoolAmountIn', async () => {
             // Call function
+            await pool.finalize();
+            var poolBal = await pool.totalSupply()
+            poolBal = fromWei(poolBal)
             const poolRatioAfterExitFee = 0.9;
             const pAi = currentPoolBalance * (1 - poolRatioAfterExitFee) * (1 / (1 - exitFee));
 
-            const tAo = await pool.exitswapPoolAmountIn.call(WETH, toWei(String(pAi)), toWei('0'));
-            await pool.exitswapPoolAmountIn(WETH, toWei(String(pAi)), toWei('0'));
+            await logData()
+            console.log('pAi','102.2')
+            const tAo = await pool.exitswapPoolAmountIn.call(WETH, toWei(String(2.2)), toWei('0'));
+            console.log('tAo', fromWei(tAo.toString()))
+            await pool.exitswapPoolAmountIn(WETH, toWei(String(2.2)), toWei('0'));
 
-            // Update balance states
-            previousPoolBalance = currentPoolBalance;
-            currentPoolBalance = currentPoolBalance.sub(Decimal(pAi).mul(Decimal(1).sub(Decimal(exitFee))));
-            previousWethBalance = currentWethBalance;
-            const mult = (1 - poolRatioAfterExitFee ** (1 / wethNorm)) * (1 - swapFee * (1 - wethNorm));
-            currentWethBalance = currentWethBalance.sub(previousWethBalance.mul(Decimal(mult)));
+            await logData()
 
-            // Check tAo
-            const expected = (previousWethBalance.sub(currentWethBalance)); // 0.4641 -> 1.1^4 - 1 = 0.4641
-            const actual = fromWei(tAo);
-            const relDif = calcRelativeDiff(expected, actual);
-
-            if (verbose) {
-                console.log('tAo');
-                console.log(`expected: ${expected})`);
-                console.log(`actual  : ${actual})`);
-                console.log(`relDif  : ${relDif})`);
-            }
-
-            assert.isAtMost(relDif.toNumber(), errorDelta);
-
-            // Print current balances after operation
-            await logAndAssertCurrentBalances();
         });
 
 
-        it('exitswapExternAmountOut', async () => {
+        it.skip('exitswapExternAmountOut', async () => {
             // Call function
+            await pool.finalize();
+
             const poolRatioAfterExitFee = 0.9;
             const tokenRatioBeforeSwapFee = poolRatioAfterExitFee ** (1 / daiNorm);
             const tAo = currentDaiBalance * (1 - tokenRatioBeforeSwapFee) * (1 - swapFee * (1 - daiNorm));
+            await logData()
+            console.log('tao', 1.7)
+            const pAi = await pool.exitswapExternAmountOut.call(DAI, toWei(String('1.7')), MAX);
+            await pool.exitswapExternAmountOut(DAI, toWei(String('1.7')), MAX);
+            console.log('pAi', fromWei(pAi.toString()))
+            await logData()
 
-            const pAi = await pool.exitswapExternAmountOut.call(DAI, toWei(String(tAo)), MAX);
-            await pool.exitswapExternAmountOut(DAI, toWei(String(tAo)), MAX);
-
-            // Update balance states
-            previousDaiBalance = currentDaiBalance;
-            currentDaiBalance = currentDaiBalance.sub(Decimal(tAo));
-            previousPoolBalance = currentPoolBalance;
-            const balanceChange = previousPoolBalance.mul(Decimal(1).sub(Decimal(poolRatioAfterExitFee)));
-            currentPoolBalance = currentPoolBalance.sub(balanceChange);
-
-            // check pAi
-            // Notice the (1-exitFee) term since only pAi*(1-exitFee) is burned
-            const expected = (previousPoolBalance.sub(currentPoolBalance)).div(Decimal(1).sub(Decimal(exitFee)));
-            const actual = fromWei(pAi);
-            const relDif = calcRelativeDiff(expected, actual);
-
-            if (verbose) {
-                console.log('pAi');
-                console.log(`expected: ${expected})`);
-                console.log(`actual  : ${actual})`);
-                console.log(`relDif  : ${relDif})`);
-            }
-
-            assert.isAtMost(relDif.toNumber(), errorDelta);
-
-            // Print current balances after operation
-            await logAndAssertCurrentBalances();
         });
 
 
-        it('pAo = joinswapExternAmountIn(joinswapPoolAmountOut(pAo))', async () => {
+        it.skip('pAo = joinswapExternAmountIn(joinswapPoolAmountOut(pAo))', async () => {
             const pAo = 10;
             const tAi = await pool.joinswapPoolAmountOut.call(WETH, toWei(String(pAo)), MAX);
             const calculatedPAo = await pool.joinswapExternAmountIn.call(WETH, String(tAi), toWei('0'));
@@ -440,7 +482,7 @@ contract('BPool', async (accounts) => {
         });
 
 
-        it('tAi = joinswapPoolAmountOut(joinswapExternAmountIn(tAi))', async () => {
+        it.skip('tAi = joinswapPoolAmountOut(joinswapExternAmountIn(tAi))', async () => {
             const tAi = 1;
             const pAo = await pool.joinswapExternAmountIn.call(DAI, toWei(String(tAi)), toWei('0'));
             const calculatedtAi = await pool.joinswapPoolAmountOut.call(DAI, String(pAo), MAX);
@@ -461,7 +503,7 @@ contract('BPool', async (accounts) => {
         });
 
 
-        it('pAi = exitswapExternAmountOut(exitswapPoolAmountIn(pAi))', async () => {
+        it.skip('pAi = exitswapExternAmountOut(exitswapPoolAmountIn(pAi))', async () => {
             const pAi = 10;
             const tAo = await pool.exitswapPoolAmountIn.call(WETH, toWei(String(pAi)), toWei('0'));
             const calculatedPAi = await pool.exitswapExternAmountOut.call(WETH, String(tAo), MAX);
@@ -482,7 +524,7 @@ contract('BPool', async (accounts) => {
         });
 
 
-        it('tAo = exitswapPoolAmountIn(exitswapExternAmountOut(tAo))', async () => {
+        it.skip('tAo = exitswapPoolAmountIn(exitswapExternAmountOut(tAo))', async () => {
             const tAo = '1';
             const pAi = await pool.exitswapExternAmountOut.call(DAI, toWei(tAo), MAX);
             const calculatedtAo = await pool.exitswapPoolAmountIn.call(DAI, String(pAi), toWei('0'));

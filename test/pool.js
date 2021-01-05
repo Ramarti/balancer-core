@@ -4,9 +4,9 @@ const { calcOutGivenIn, calcInGivenOut, calcRelativeDiff } = require('../lib/cal
 const BPool = artifacts.require('BPool');
 const BFactory = artifacts.require('BFactory');
 const TToken = artifacts.require('TToken');
-const verbose = process.env.VERBOSE;
+const verbose = true
 
-contract('BPool', async (accounts) => {
+contract.skip('BPool', async (accounts) => {
     const admin = accounts[0];
     const user1 = accounts[1];
     const user2 = accounts[2];
@@ -87,7 +87,7 @@ contract('BPool', async (accounts) => {
             );
         });
 
-        it('Admin approves tokens', async () => {
+        it.only('Admin approves tokens', async () => {
             await weth.approve(POOL, MAX);
             await mkr.approve(POOL, MAX);
             await dai.approve(POOL, MAX);
@@ -120,7 +120,7 @@ contract('BPool', async (accounts) => {
             );
         });
 
-        it('Admin binds tokens', async () => {
+        it.only('Admin binds tokens', async () => {
             // Equal weights WETH, MKR, DAI
             await pool.bind(WETH, toWei('50'), toWei('5'));
             await pool.bind(MKR, toWei('20'), toWei('5'));
@@ -137,7 +137,7 @@ contract('BPool', async (accounts) => {
             assert.equal(20, fromWei(mkrBalance));
         });
 
-        it('Admin unbinds token', async () => {
+        it.only('Admin unbinds token', async () => {
             await pool.bind(XXX, toWei('10'), toWei('5'));
             let adminBalance = await xxx.balanceOf(admin);
             assert.equal(0, fromWei(adminBalance));
@@ -280,7 +280,7 @@ contract('BPool', async (accounts) => {
             );
         });
 
-        it('Admin sets swap fees', async () => {
+        it.only('Admin sets swap fees', async () => {
             await pool.setSwapFee(toWei('0.003'));
             const swapFee = await pool.getSwapFee();
             assert.equal(0.003, fromWei(swapFee));
@@ -293,7 +293,7 @@ contract('BPool', async (accounts) => {
             );
         });
 
-        it('Admin finalizes pool', async () => {
+        it.only('Admin finalizes pool', async () => {
             const tx = await pool.finalize();
             const adminBal = await pool.balanceOf(admin);
             assert.equal(100, fromWei(adminBal));
@@ -339,7 +339,7 @@ contract('BPool', async (accounts) => {
     });
 
     describe('User interactions', () => {
-        it('Other users approve tokens', async () => {
+        it.only('Other users approve tokens', async () => {
             await weth.approve(POOL, MAX, { from: user1 });
             await mkr.approve(POOL, MAX, { from: user1 });
             await dai.approve(POOL, MAX, { from: user1 });
@@ -351,7 +351,7 @@ contract('BPool', async (accounts) => {
             await xxx.approve(POOL, MAX, { from: user2 });
         });
 
-        it('User1 joins pool', async () => {
+        it.only('User1 joins pool', async () => {
             await pool.joinPool(toWei('5'), [MAX, MAX, MAX], { from: user1 });
             const daiBalance = await pool.getBalance(DAI);
             assert.equal(10500, fromWei(daiBalance));
@@ -371,7 +371,7 @@ contract('BPool', async (accounts) => {
             await truffleAssert.reverts(pool.unbind(DAI), 'ERR_IS_FINALIZED');
         });
 
-        it('getSpotPriceSansFee and getSpotPrice', async () => {
+        it.only('getSpotPriceSansFee and getSpotPrice', async () => {
             const wethPrice = await pool.getSpotPriceSansFee(DAI, WETH);
             assert.equal(200, fromWei(wethPrice));
 
@@ -392,7 +392,7 @@ contract('BPool', async (accounts) => {
             );
         });
 
-        it('swapExactAmountIn', async () => {
+        it.only('swapExactAmountIn', async () => {
             // 2.5 WETH -> DAI
             const expected = calcOutGivenIn(52.5, 5, 10500, 5, 2.5, 0.003);
             const txr = await pool.swapExactAmountIn(

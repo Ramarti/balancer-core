@@ -32,6 +32,7 @@ contract BPool is BBronze, BToken, BMath {
         uint256         tokenAmountIn,
         uint256         tokenAmountOut
     );
+    event LogUint(uint amount);
 
     event LOG_JOIN(
         address indexed caller,
@@ -449,6 +450,7 @@ contract BPool is BBronze, BToken, BMath {
                                     outRecord.denorm,
                                     _swapFee
                                 );
+
         require(spotPriceBefore <= maxPrice, "ERR_BAD_LIMIT_PRICE");
 
         tokenAmountOut = calcOutGivenIn(
