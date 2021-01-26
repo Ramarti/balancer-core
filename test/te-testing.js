@@ -109,6 +109,7 @@ contract('BPool', async (accounts) => {
         await pool.setPublicSwap(true);
 
         await pool.setSwapFee(toWei(String(swapFee)));
+        
     });
 
     describe('Extreme weights', () => {
@@ -152,7 +153,7 @@ contract('BPool', async (accounts) => {
         });
 
 
-        it('swapExactAmountOut', async () => {
+        it.only('swapExactAmountOut', async () => {
             const tokenIn = WETH;
             const maxAmountIn = MAX;
             const tokenOut = DAI;
@@ -162,7 +163,10 @@ contract('BPool', async (accounts) => {
             const output = await pool.swapExactAmountOut.call(
                 tokenIn, maxAmountIn, tokenOut, tokenAmountOut, maxPrice,
             );
-
+            const tx = await pool.swapExactAmountOut(
+              tokenIn, maxAmountIn, tokenOut, tokenAmountOut, maxPrice,
+          );
+            console.log(tx)
             // Checking outputs
             let expected = Decimal('425506505648.348073');
             let actual = Decimal(fromWei(output.tokenAmountIn));
